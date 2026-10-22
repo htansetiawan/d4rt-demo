@@ -162,7 +162,9 @@ def make_notebook(illustration=False, soccer=False):
     p = d.query(u, v, t_src, t_tgt, t_cam)
     print("3D position:", np.round(p.xyz, 4))
     print("Visibility:", round(float(p.visibility), 3))
-    viz.filmstrip(video, source_uv)
+    # Use the target camera to obtain the predicted pixel for the target image.
+    p_image = d.query(u, v, t_src, t_tgt, t_cam=t_tgt)
+    viz.filmstrip(video, source_uv, source=t_src, prediction=p_image, target=t_tgt)
     """)
     md("""
     ## 03 · Depth is one query pattern

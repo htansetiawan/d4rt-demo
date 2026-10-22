@@ -35,25 +35,55 @@ def _finish(fig, label):
     plt.show()
 
 
-def filmstrip(video, uv=None, source=0, *, marker_size=900):
+def filmstrip(video, uv=None, source=0, *, marker_size=900, prediction=None, target=None):
+    """Mark the source and, optionally, one predicted target-frame position.
+
+    Pass a scalar QueryResult queried with t_cam=t_tgt for prediction so its
+    normalized uv matches the target image. A 3D point in camera 0 coordinates
+    is not itself an image coordinate.
+    """
+    if prediction is not None and target is None:
+        target = len(video) - 1
     ids = np.linspace(0, len(video)-1, 4, dtype=int)
-    # Include the selected source even when it is not one of the regular samples.
-    if uv is not None and source not in ids:
-        ids[np.argmin(np.abs(ids - source))] = source
-        ids.sort()
+    required = ([source] if uv is not None else []) + ([target] if prediction is not None else [])
+    for frame in required:
+        if not isinstance(frame, (int, np.integer)) or not 0 <= frame < len(video):
+            raise ValueError("source and target must be valid integer clip indices.")
+        if frame not in ids:
+            candidates = [i for i, t in enumerate(ids) if t not in required]
+            ids[min(candidates, key=lambda i: abs(ids[i] - frame))] = frame
+    ids.sort()
     fig, axes = plt.subplots(1, 4, figsize=(15, 3.3))
     h, w = video.frames.shape[1:3]
+
+    def marker(ax, point, label, color, label_y=.08):
+        point = np.asarray(point)
+        if point.shape != (2,):
+            raise ValueError("Pass a single point with uv shape (2,), not a batch.")
+        if not np.isfinite(point).all() or not ((point >= 0) & (point <= 1)).all():
+            status = "OUTSIDE FRAME" if np.isfinite(point).all() else "UNAVAILABLE"
+            ax.text(.05, label_y, f"{label}\n{status}", transform=ax.transAxes,
+                    color=color, fontsize=10, fontweight="bold",
+                    bbox=dict(facecolor="black", edgecolor=color, alpha=.9), zorder=8)
+            return
+        x, y = point * [w-1, h-1]
+        ax.scatter(x, y, s=marker_size, facecolors="none", edgecolors="black", linewidths=7, zorder=5)
+        ax.scatter(x, y, s=marker_size, facecolors="none", edgecolors=color, linewidths=3, zorder=6)
+        ax.scatter(x, y, s=40, facecolors="white", edgecolors="black", linewidths=1, zorder=7)
+        ax.annotate(label, xy=(x, y), xytext=(.05, label_y),
+                    textcoords="axes fraction", color=color, fontsize=10, fontweight="bold",
+                    bbox=dict(boxstyle="round,pad=.35", facecolor="black", edgecolor=color, alpha=.9),
+                    arrowprops=dict(arrowstyle="->", color=color, lw=2), zorder=8)
+
     for ax, t in zip(axes, ids):
         ax.imshow(video.frames[t]); ax.set_title(f"frame {t}"); ax.axis("off")
         if uv is not None and t == source:
-            x, y = uv[0] * (w-1), uv[1] * (h-1)
-            ax.scatter(x, y, s=marker_size, facecolors="none", edgecolors="black", linewidths=7, zorder=5)
-            ax.scatter(x, y, s=marker_size, facecolors="none", edgecolors="#ffe600", linewidths=3, zorder=6)
-            ax.scatter(x, y, s=40, facecolors="white", edgecolors="black", linewidths=1, zorder=7)
-            ax.annotate("SOURCE POINT", xy=(x, y), xytext=(.05, .08),
-                        textcoords="axes fraction", color="#ffe600", fontsize=11, fontweight="bold",
-                        bbox=dict(boxstyle="round,pad=.35", facecolor="black", edgecolor="#ffe600", alpha=.9),
-                        arrowprops=dict(arrowstyle="->", color="#ffe600", lw=2), zorder=8)
+            marker(ax, uv, "SOURCE POINT", "#ffe600")
+        if prediction is not None and t == target:
+            vis = float(prediction.visibility)
+            label = f"PREDICTED · vis {vis:.2f}" + ("\nLOW VISIBILITY" if vis <= .5 else "")
+            marker(ax, prediction.uv, label, TEAL, label_y=.85 if source == target else .08)
+        ax.set_xlim(-.5, w-.5); ax.set_ylim(h-.5, -.5)
     _finish(fig, video.name)
 
 
