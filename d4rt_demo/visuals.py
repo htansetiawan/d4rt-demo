@@ -35,14 +35,25 @@ def _finish(fig, label):
     plt.show()
 
 
-def filmstrip(video, uv=None, source=0):
+def filmstrip(video, uv=None, source=0, *, marker_size=900):
     ids = np.linspace(0, len(video)-1, 4, dtype=int)
+    # Include the selected source even when it is not one of the regular samples.
+    if uv is not None and source not in ids:
+        ids[np.argmin(np.abs(ids - source))] = source
+        ids.sort()
     fig, axes = plt.subplots(1, 4, figsize=(15, 3.3))
     h, w = video.frames.shape[1:3]
     for ax, t in zip(axes, ids):
         ax.imshow(video.frames[t]); ax.set_title(f"frame {t}"); ax.axis("off")
         if uv is not None and t == source:
-            ax.scatter(uv[0] * (w-1), uv[1] * (h-1), s=140, facecolors="none", edgecolors=ORANGE, linewidths=2)
+            x, y = uv[0] * (w-1), uv[1] * (h-1)
+            ax.scatter(x, y, s=marker_size, facecolors="none", edgecolors="black", linewidths=7, zorder=5)
+            ax.scatter(x, y, s=marker_size, facecolors="none", edgecolors="#ffe600", linewidths=3, zorder=6)
+            ax.scatter(x, y, s=40, facecolors="white", edgecolors="black", linewidths=1, zorder=7)
+            ax.annotate("SOURCE POINT", xy=(x, y), xytext=(.05, .08),
+                        textcoords="axes fraction", color="#ffe600", fontsize=11, fontweight="bold",
+                        bbox=dict(boxstyle="round,pad=.35", facecolor="black", edgecolor="#ffe600", alpha=.9),
+                        arrowprops=dict(arrowstyle="->", color="#ffe600", lw=2), zorder=8)
     _finish(fig, video.name)
 
 
