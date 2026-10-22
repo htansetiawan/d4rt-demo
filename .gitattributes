@@ -1,0 +1,2 @@
+# Plotly and nbconvert exports include generated JavaScript / GLSL whitespace.
+artifacts/*.html linguist-generated=true whitespace=-blank-at-eol

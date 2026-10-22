@@ -1,0 +1,15 @@
+{
+  "backend": "illustration",
+  "video": "geometric illustration",
+  "frames": 32,
+  "source_commit": "403290a6e7ea6262a1f20f8c02d5461cd7b6c9b3",
+  "checkpoint_revision": null,
+  "original_indices": null,
+  "stats": {
+    "encoder_calls": 0,
+    "query_calls": 9,
+    "queries": 16806,
+    "encode_seconds": 0.0,
+    "decode_seconds": 0.0
+  }
+}

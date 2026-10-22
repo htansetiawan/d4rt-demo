@@ -1,0 +1,12 @@
+.venv/
+.cache/
+__pycache__/
+.ipynb_checkpoints/
+checkpoints/
+data/
+artifacts/*.npz
+artifacts/*.json
+!artifacts/*_provenance.json
+artifacts/*_executed.ipynb
+artifacts/rehearsal_preview.png
+artifacts/illustration_player_preview.png
