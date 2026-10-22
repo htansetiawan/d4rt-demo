@@ -7,7 +7,14 @@ import nbformat as nbf
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def make_notebook(illustration=False):
+def make_notebook(illustration=False, soccer=False):
+    if illustration and soccer:
+        raise ValueError("The soccer demo uses real OpenD4RT inference.")
+    video_path = "data/davis/kid-football.mp4" if soccer else "data/worldtrack/pstudio_mini/juggle_5.npz"
+    example = "kid-football" if soccer else "juggle_5"
+    source_uv = [.29, .18] if soccer else [.62, .65]
+    anchors = ([[.29,.18], [.61,.65], [.52,.13], [.48,.85], [.18,.65], [.88,.80]] if soccer
+               else [[.62,.65], [.63,.43], [.56,.86], [.597,.475], [.23,.48], [.80,.30]])
     cells = []
 
     def md(text):
@@ -45,12 +52,19 @@ def make_notebook(illustration=False):
         > on the OpenD4RT `juggle_5` sequence.
         """)
     else:
-        md("""
+        md(f"""
         > **Live GPU demo.** Before opening this notebook, run the setup commands in
         > `README.md` to fetch OpenD4RT, its released 32-frame checkpoint, and the
-        > `juggle_5` WorldTrack example. This notebook does not download weights while presenting.
+        > `{example}` example. This notebook does not download weights while presenting.
         > Run all cells once before the talk and save the outputs. A separate executed
         > `D4RT_rehearsal.ipynb` teaches the same API with explicitly labeled analytic geometry.
+        """)
+    if soccer:
+        md("""
+        > **Soccer edition.** DAVIS `kid-football`: a large foreground ball, a moving player,
+        > and a camera that pulls back. Watch the ball's visibility as it passes the player,
+        > and compare a background point in fixed versus moving camera coordinates.
+        > This is RGB-only inference on a DAVIS clip, separate from the WorldTrack example.
         """)
     code("""
     from pathlib import Path
@@ -81,21 +95,22 @@ def make_notebook(illustration=False):
     code(f'''
     # Configuration — prepare this cell before the presentation.
     BACKEND = {"'illustration'" if illustration else "'opend4rt'"}
-    VIDEO_PATH = ROOT / "data/worldtrack/pstudio_mini/juggle_5.npz"
+    RUN_NAME = {"'soccer'" if soccer else "BACKEND"}
+    VIDEO_PATH = ROOT / {video_path!r}
     CHECKPOINT_DIR = ROOT / "checkpoints/OpenD4RT_32CLIP_9Dataset_NoAUG"
     N_FRAMES = 32
     STRIDE = 2  # Every other original frame; query indices always refer to this sampled clip.
 
     if BACKEND == "opend4rt":
-        video = load_video(VIDEO_PATH, max_frames=N_FRAMES, stride=STRIDE)
+        video = load_video(VIDEO_PATH, max_frames=N_FRAMES, stride=STRIDE, max_height=480)
         d4rt = D4RT.from_pretrained(
             repo_dir=ROOT / ".cache/Open-d4rt",
             checkpoint=CHECKPOINT_DIR / "opend4rt.ckpt",
             config=CHECKPOINT_DIR / "model.yaml",
             device="cuda", precision="float32", chunk_size=64,  # auto trades precision for lower VRAM.
         )
-        source_uv = np.array([.62, .65])  # Visible shirt patch in juggle_5, frame 0.
-        anchors = np.array([[.62,.65], [.63,.43], [.56,.86], [.597,.475], [.23,.48], [.80,.30]])
+        source_uv = np.array({source_uv!r})  # Ball in kid-football; shirt patch in juggle_5.
+        anchors = np.array({anchors!r})
     elif BACKEND == "illustration":
         from d4rt_demo.illustration import make_illustration
         video = make_illustration(n_frames=N_FRAMES)
@@ -194,17 +209,14 @@ def make_notebook(illustration=False):
     A fixed reference makes the object's trajectory comparable across time. A moving camera reference also
     reflects camera motion. Camera 0 is a convenient reference, not an externally calibrated world frame.
 
-    The `juggle_5` capture has a largely fixed camera, so both references may look similar here.
-    A clip with a moving camera makes this difference more visible.
-
     These are direct predictions in the requested frame, so this wrapper does not estimate camera poses
     and transform the 3D answer afterward. Independently decoded coordinates can have consistency errors.
 
     *Say: “This is the subtle part: when does the point exist, and from whose camera do I describe it?”*
     """)
     code("""
-    # tracks and local differ only in t_cam. Compare the same point.
-    viz.camera_view(tracks, local, times, point=0)
+    # tracks and local differ only in t_cam. Compare a background point.
+    viz.camera_view(tracks, local, times, point=4)
 
     # Freeze the physical instant; change only the reference camera.
     t = len(video) // 2
@@ -233,7 +245,7 @@ def make_notebook(illustration=False):
     )
     colors = viz.sample_colors(video, U, V)
     player_path = viz.scene_player(cloud, colors, cloud_times,
-                                   path=f"artifacts/{BACKEND}_4d_scene.html")
+                                   path=f"artifacts/{RUN_NAME}_4d_scene.html")
     print("Standalone offline player:", player_path)
     """)
     md("""
@@ -303,14 +315,14 @@ def make_notebook(illustration=False):
         "original_indices": video.original_indices.tolist() if video.original_indices is not None else None,
         "stats": d.stats,
     }
-    np.savez_compressed(output / f"{BACKEND}_results.npz",
+    np.savez_compressed(output / f"{RUN_NAME}_results.npz",
         metadata=json.dumps(metadata), frames=video.frames,
         depth=depth, anchors=anchors, times=times,
         tracks_xyz=tracks.xyz, local_xyz=local.xyz, tracks_uv=local.uv,
         visibility=local.visibility, cloud_xyz=cloud.xyz,
         cloud_visibility=cloud.visibility, cloud_times=cloud_times, colors=colors)
-    (output / f"{BACKEND}_provenance.json").write_text(json.dumps(metadata, indent=2))
-    print("Saved", output / f"{BACKEND}_results.npz")
+    (output / f"{RUN_NAME}_provenance.json").write_text(json.dumps(metadata, indent=2))
+    print("Saved", output / f"{RUN_NAME}_results.npz")
     """, setup=True)
     md("""
     ### Sources and attribution
@@ -325,6 +337,21 @@ def make_notebook(illustration=False):
     checkpoints, and dataset retain their respective licenses and terms.
     """)
     nb = nbf.v4.new_notebook(cells=cells)
+    if not soccer and not illustration:
+        for cell in nb.cells:
+            if cell.cell_type == "markdown" and cell.source.startswith("## 05"):
+                cell.source = cell.source.replace(
+                    "These are direct predictions",
+                    "The `juggle_5` capture has a largely fixed camera, so both references may look similar here. "
+                    "The soccer edition uses a moving camera for a clearer comparison.\n\nThese are direct predictions")
+    if soccer:
+        nb.cells[0].source = nb.cells[0].source.replace("# D4RT\n", "# D4RT · Soccer\n", 1)
+        nb.cells[-1].source = nb.cells[-1].source.replace(
+            "- [WorldTrack release linked by OpenD4RT](https://drive.google.com/drive/folders/1-JW88ru30irMYyFab_4YBQbGbd9tKpXV):\n  `pstudio_mini/juggle_5.npz`. Only its JPEG images are passed to the model; no ground-truth geometry is used.",
+            "- [DAVIS dataset](https://davischallenge.org/davis2017/code.html): `kid-football`.\n"
+            "- [Lightricks' DAVIS video mirror](https://huggingface.co/datasets/Lightricks/Canny-Control-Dataset): "
+            "revision `2b7f1b86150dac8b519ad8cf6d5d4a0351c6dc03`, `kid-football.mp4`. "
+            "Only RGB images are model input; no masks, depth, or ground-truth tracks are used.")
     nb.metadata.update(kernelspec={"display_name":"Python 3", "language":"python", "name":"python3"},
                        language_info={"name":"python", "version":"3.11"})
     for c in cells:
@@ -334,7 +361,12 @@ def make_notebook(illustration=False):
 
 
 if __name__ == "__main__":
-    for name, illustration in (("D4RT_demo.ipynb", False), ("D4RT_rehearsal.ipynb", True)):
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--soccer", action="store_true", help="Create only the separate soccer edition.")
+    args = parser.parse_args()
+    targets = [("D4RT_soccer.ipynb",False)] if args.soccer else [("D4RT_demo.ipynb",False),("D4RT_rehearsal.ipynb",True)]
+    for name, illustration in targets:
         path = ROOT / name
-        nbf.write(make_notebook(illustration), path)
+        nbf.write(make_notebook(illustration, soccer=args.soccer), path)
         print(path)

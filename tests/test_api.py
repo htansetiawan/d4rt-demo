@@ -7,7 +7,7 @@ import unittest
 
 import numpy as np
 
-from d4rt_demo import D4RT, Video
+from d4rt_demo import D4RT, Video, load_video
 from d4rt_demo.illustration import make_illustration
 
 
@@ -52,6 +52,23 @@ class IllustrationTests(unittest.TestCase):
         real = Video(np.zeros((2,8,8,3),dtype=np.uint8))
         with self.assertRaises(ValueError):
             D4RT.illustration()(real)
+
+
+class VideoLoadingTests(unittest.TestCase):
+    def test_resize_preserves_aspect_ratio_and_sample_indices(self):
+        import cv2
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "clip.avi"
+            writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"MJPG"), 24, (80, 40))
+            self.assertTrue(writer.isOpened())
+            for i in range(8):
+                writer.write(np.full((40,80,3), i*20, dtype=np.uint8))
+            writer.release()
+            video = load_video(path, max_frames=4, stride=2, max_height=20)
+            self.assertEqual(video.frames.shape, (4,20,40,3))
+            np.testing.assert_array_equal(video.original_indices, [0,2,4,6])
+            self.assertEqual(video.fps, 12)
+            self.assertGreater(float(video.frames[-1].mean()), float(video.frames[0].mean()))
 
 
 class UpstreamAdapterTests(unittest.TestCase):

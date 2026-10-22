@@ -15,8 +15,8 @@ from nbconvert.preprocessors import TagRemovePreprocessor
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def render(illustration=False):
-    stem = "D4RT_rehearsal" if illustration else "D4RT_demo"
+def render(illustration=False, soccer=False):
+    stem = "D4RT_soccer" if soccer else ("D4RT_rehearsal" if illustration else "D4RT_demo")
     path = ROOT / f"{stem}.ipynb"
     nb = nbformat.read(path, as_version=4)
     # Kernel widgets need a running server. All main figures/player are exported.
@@ -52,6 +52,8 @@ def render(illustration=False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--illustration", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--illustration", action="store_true")
+    mode.add_argument("--soccer", action="store_true")
     args = parser.parse_args()
-    render(args.illustration)
+    render(args.illustration, args.soccer)

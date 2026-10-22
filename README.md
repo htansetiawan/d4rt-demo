@@ -24,6 +24,32 @@ Validated on an NVIDIA RTX PRO 5000 Blackwell with PyTorch 2.11: one video encod
 16,806 queries, finite saved geometry, nine passing tests, and offline player playback
 verified in Chrome. Timings are specific to this machine and clip.
 
+## Soccer edition
+
+Open **[D4RT_soccer.ipynb](D4RT_soccer.ipynb)** for a second real-model demo using
+DAVIS `kid-football`: a close-up soccer ball, a moving player, and a camera pulling
+back. It uses the same query API and checkpoint. Its exports are
+`artifacts/D4RT_soccer.html` and `artifacts/soccer_4d_scene.html`.
+
+```bash
+python scripts/setup_demo.py --example soccer
+python -m jupyterlab D4RT_soccer.ipynb
+# Regenerate saved real-model outputs:
+python scripts/render_demo.py --soccer
+```
+
+The clip is fetched from [Lightricks' public DAVIS mirror](https://huggingface.co/datasets/Lightricks/Canny-Control-Dataset)
+at revision `2b7f1b86150dac8b519ad8cf6d5d4a0351c6dc03`. Only its RGB video is passed
+to OpenD4RT. Frames are downsized to 480 pixels high for display and memory use,
+preserving aspect ratio; the model still receives its configured 256×256 input.
+The notebook samples 32 frames at stride 2. Track the ball, shirt, and background
+tree; compare the tree in fixed and moving camera coordinates. Inspect visibility
+when the ball passes the player. Fast motion, occlusion, and camera zoom can produce
+tracking errors, so inspect the results rather than treating this as a benchmark.
+
+The original juggling notebook remains available as the more controlled example.
+OpenD4RT's `football_16` example is American football, rather than soccer.
+
 Open **[D4RT_demo.ipynb](D4RT_demo.ipynb)** for real OpenD4RT inference on the
 `pstudio_mini/juggle_5` sequence recommended by the upstream project. It demonstrates
 depth, sparse 3D tracks, fixed and moving camera references, backward queries, and

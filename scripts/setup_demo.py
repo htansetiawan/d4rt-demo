@@ -13,7 +13,10 @@ HF_REPO = "Lijiaxin0111/OpenD4RT"
 HF_REVISION = "7099b1fc760475de3b7409acd6b63f801b015d07"
 WEIGHT_DIR = "checkpoints/OpenD4RT_32CLIP_9Dataset_NoAUG"
 EXAMPLES = {"juggle_5": "13ZlJ-U1qNPafVmYyiLN9kGY8Lk7Zyy_p",
-            "softball_25": "1ZQRdlE39l5BSaNgVh9eE6tVrEsl6sCj4"}
+            "softball_25": "1ZQRdlE39l5BSaNgVh9eE6tVrEsl6sCj4",
+            "soccer": None}
+SOCCER_REPO = "Lightricks/Canny-Control-Dataset"
+SOCCER_REVISION = "2b7f1b86150dac8b519ad8cf6d5d4a0351c6dc03"
 
 
 def setup(source=True, weights=False, example=None):
@@ -30,19 +33,26 @@ def setup(source=True, weights=False, example=None):
             raise RuntimeError(f"Source revision differs: {found}. Expected {SOURCE_COMMIT}.")
         print(f"OpenD4RT source: {found}")
     if example:
-        import gdown
-        target = ROOT / f"data/worldtrack/pstudio_mini/{example}.npz"
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if not target.is_file():
-            temporary = target.with_suffix(".npz.part")
-            result = gdown.download(id=EXAMPLES[example], output=str(temporary), quiet=False)
-            if result is None:
-                raise RuntimeError("Download failed. Use the WorldTrack folder linked in README.")
-            temporary.replace(target)
+        if example == "soccer":
+            from huggingface_hub import hf_hub_download
+            target = ROOT / "data/davis/kid-football.mp4"
+            if not target.is_file():
+                hf_hub_download(SOCCER_REPO, "kid-football.mp4", repo_type="dataset",
+                                revision=SOCCER_REVISION, local_dir=target.parent)
+        else:
+            import gdown
+            target = ROOT / f"data/worldtrack/pstudio_mini/{example}.npz"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if not target.is_file():
+                temporary = target.with_suffix(".npz.part")
+                result = gdown.download(id=EXAMPLES[example], output=str(temporary), quiet=False)
+                if result is None:
+                    raise RuntimeError("Download failed. Use the WorldTrack folder linked in README.")
+                temporary.replace(target)
         # Validate the download and decode RGB; do not access ground-truth tracks.
         sys.path.insert(0, str(ROOT))
         from d4rt_demo import load_video
-        video = load_video(target)
+        video = load_video(target, max_height=480)
         print(f"Example: {target} · {len(video)} RGB frames decoded")
     if weights:
         from huggingface_hub import hf_hub_download

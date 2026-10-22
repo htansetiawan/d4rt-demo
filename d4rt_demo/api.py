@@ -35,12 +35,13 @@ class Video:
         return len(self.frames)
 
 
-def load_video(path, *, max_frames=32, stride=1) -> Video:
+def load_video(path, *, max_frames=32, stride=1, max_height=None) -> Video:
     """Read the first clip from a video or an OpenD4RT WorldTrack NPZ.
 
     NPZ loading only accesses JPEG images, never trajectories or depth labels.
     WorldTrack's object arrays require pickle; use only trusted dataset files.
     Indices in query() refer to the sampled clip, not the original video.
+    max_height optionally downsizes frames while preserving their aspect ratio.
     """
     import cv2
 
@@ -49,8 +50,19 @@ def load_video(path, *, max_frames=32, stride=1) -> Video:
         raise FileNotFoundError(f"Missing {path}. Run scripts/setup_demo.py --example first.")
     if int(max_frames) != max_frames or max_frames < 1 or int(stride) != stride or stride < 1:
         raise ValueError("max_frames and stride must be positive integers.")
+    if max_height is not None and (int(max_height) != max_height or max_height < 1):
+        raise ValueError("max_height must be a positive integer or None.")
     max_frames, stride = int(max_frames), int(stride)
     frames, ids = [], []
+
+    def append_frame(frame, index):
+        h, w = frame.shape[:2]
+        if max_height is not None and h > max_height:
+            frame = cv2.resize(frame, (max(1, round(w * max_height / h)), int(max_height)),
+                               interpolation=cv2.INTER_AREA)
+        frames.append(frame)
+        ids.append(index)
+
     fps = 12.0
     if path.suffix.lower() == ".npz":
         with np.load(path, allow_pickle=True) as pack:
@@ -61,8 +73,7 @@ def load_video(path, *, max_frames=32, stride=1) -> Video:
                 bgr = cv2.imdecode(raw, cv2.IMREAD_COLOR)
                 if bgr is None:
                     raise ValueError(f"Could not decode WorldTrack frame {i}.")
-                frames.append(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
-                ids.append(i)
+                append_frame(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), i)
     else:
         cap = cv2.VideoCapture(str(path))
         try:
@@ -75,8 +86,7 @@ def load_video(path, *, max_frames=32, stride=1) -> Video:
                 if not ok:
                     break
                 if i % stride == 0:
-                    frames.append(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
-                    ids.append(i)
+                    append_frame(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), i)
         finally:
             cap.release()
     if len(frames) < 2:
