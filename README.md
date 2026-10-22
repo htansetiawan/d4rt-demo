@@ -1,182 +1,110 @@
-# D4RT presentation demo
+# D4RT demo
 
-A short notebook built around the requested interface:
+Open **[D4RT_simple.ipynb](D4RT_simple.ipynb)** for the presentation. It uses real
+OpenD4RT predictions on the DAVIS `kid-football` soccer clip and has four steps:
+
+1. Initialize the model and encode the video: `d = d4rt(video)`.
+2. Select one `(u, v)` pixel on the ball in frame 0 and query its position in frame 31.
+3. Query a grid of pixels to make a depth map.
+4. Track that same ball point through all 32 frames.
+
+Every query variable is visible in the notebook. The point example shows frame 0
+and frame 31 side by side with large markers. The final player has Play/Pause,
+a frame slider, a predicted point marker, and its path.
 
 ```python
+d4rt = D4RT.from_pretrained(precision="float32")
 d = d4rt(video)
-p = d.query(u, v, t_src, t_tgt, t_cam)
+p = d.query(u, v, t_src=0, t_tgt=31, t_cam=31)
 ```
 
-The notebooks contain saved outputs, and the HTML presentations work offline after
-downloading them. To run inference from a fresh clone, follow the GPU setup below.
-In the already prepared local workspace, launch directly:
+## Run in the prepared workspace
 
 ```bash
-.venv/bin/python -m jupyterlab D4RT_demo.ipynb
+.venv/bin/python -m jupyterlab D4RT_simple.ipynb
 ```
 
-The notebook already contains saved real predictions. For the talk, you can also
-open `artifacts/D4RT_demo.html` or `artifacts/opend4rt_4d_scene.html` directly.
+Select the **D4RT demo** kernel, then Run All Cells. The notebook also contains
+saved outputs. Download and open `artifacts/D4RT_simple.html` for the offline
+walkthrough, or `artifacts/simple_point_track.html` for the one-point player.
 
-![Real OpenD4RT 4D surface player](artifacts/opend4rt_player_preview.png)
+The Mac browser can connect to the GPU machine's Jupyter server over an SSH tunnel;
+the Python kernel and model remain on the GPU machine.
 
-Validated on an NVIDIA RTX PRO 5000 Blackwell with PyTorch 2.11: one video encoding,
-16,806 queries, finite saved geometry, nine passing tests, and offline player playback
-verified in Chrome. Timings are specific to this machine and clip.
+## Set up a fresh clone
 
-## Soccer edition
-
-Open **[D4RT_soccer.ipynb](D4RT_soccer.ipynb)** for a second real-model demo using
-DAVIS `kid-football`: a close-up soccer ball, a moving player, and a camera pulling
-back. It uses the same query API and checkpoint. Its exports are
-`artifacts/D4RT_soccer.html` and `artifacts/soccer_4d_scene.html`.
+Install a GPU-compatible PyTorch build using the [official selector](https://pytorch.org/get-started/locally/),
+then install the notebook dependencies. A working existing CUDA environment can be used.
 
 ```bash
-python scripts/setup_demo.py --example soccer
-python -m jupyterlab D4RT_soccer.ipynb
-# Regenerate saved real-model outputs:
-python scripts/render_demo.py --soccer
-```
-
-The clip is fetched from [Lightricks' public DAVIS mirror](https://huggingface.co/datasets/Lightricks/Canny-Control-Dataset)
-at revision `2b7f1b86150dac8b519ad8cf6d5d4a0351c6dc03`. Only its RGB video is passed
-to OpenD4RT. Frames are downsized to 480 pixels high for display and memory use,
-preserving aspect ratio; the model still receives its configured 256×256 input.
-The notebook samples 32 frames at stride 2. Track the ball, shirt, and background
-tree; compare the tree in fixed and moving camera coordinates. Inspect visibility
-when the ball passes the player. Fast motion, occlusion, and camera zoom can produce
-tracking errors, so inspect the results rather than treating this as a benchmark.
-
-The original juggling notebook remains available as the more controlled example.
-OpenD4RT's `football_16` example is American football, rather than soccer.
-
-Open **[D4RT_demo.ipynb](D4RT_demo.ipynb)** for real OpenD4RT inference on the
-`pstudio_mini/juggle_5` sequence recommended by the upstream project. It demonstrates
-depth, sparse 3D tracks, fixed and moving camera references, backward queries, and
-an interactive 4D surface. The main cells show the query API; configuration and
-visualization live in `d4rt_demo/`.
-
-**[D4RT_rehearsal.ipynb](D4RT_rehearsal.ipynb)** runs on CPU using a clearly labeled
-analytic scene. Its saved outputs teach the interface; they are not model predictions.
-`artifacts/D4RT_rehearsal.html` and `artifacts/illustration_4d_scene.html` work offline.
-
-## Prepare the GPU environment
-
-Use Python 3.11 or 3.12. OpenD4RT's upstream environment uses PyTorch 2.6/CUDA 12.4;
-a newer PyTorch build matching your GPU also works with this adapter. Blackwell GPUs
-need a compatible newer CUDA/PyTorch build, such as the installed PyTorch 2.11/CUDA 12.8.
-Install PyTorch for your driver using the [official selector](https://pytorch.org/get-started/locally/).
-Keep an existing working CUDA environment if you already have one.
-
-```bash
-python3.11 -m venv .venv
+python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-# Install a GPU-compatible PyTorch build, then:
+# Install PyTorch for your GPU and driver, then:
 python -m pip install -r requirements.txt
-python scripts/setup_demo.py --weights --example
-python -m ipykernel install --user --name d4rt-demo --display-name "D4RT demo"
-python -m jupyterlab D4RT_demo.ipynb
+python scripts/setup_demo.py --weights --example soccer
+python -m ipykernel install --prefix .venv --name d4rt-demo --display-name "D4RT demo"
+python -m jupyterlab D4RT_simple.ipynb
 ```
 
-Select the **D4RT demo** kernel, then Run All. The source, checkpoint and example are
-downloaded during setup, not by the presentation cells. The checkpoint is approximately
-14 GB on disk; GPU memory depends on clip length, precision, and query chunk size.
-The notebook uses FP32 for a clear query-independence demonstration. Set
-`precision="auto"` for reduced-precision model weights with FP32 LayerNorms. A 40–48 GB
-GPU is a comfortable target; smaller cards may require a shorter clip. No specific
-throughput is promised. The notebook reports measured encoding and decoding times.
+The released checkpoint is approximately 14 GB on disk. The tested environment
+uses an NVIDIA RTX PRO 5000 Blackwell and PyTorch 2.11/CUDA 12.8. GPU memory needs
+depend on clip length, query chunk size, and precision. `precision="auto"` uses
+reduced precision to lower memory use. Source, checkpoint, environment and input
+video downloads are ignored by Git.
 
-`juggle_5.npz` is a 6.8 MB WorldTrack file. Its JPEG frames alone are model input;
-ground-truth depth, tracks and cameras are never passed to the model. The notebook
-samples 32 frames at stride 2. All query time indices refer to this sampled clip,
-not to the original file. WorldTrack playback uses an illustrative frame rate.
-NPZ files use pickle for the trusted release's JPEG object arrays; use trusted files.
+The soccer notebook uses 32 frames at stride 2. Query indices 0–31 refer to that
+sampled clip. RGB frames are resized to at most 480 pixels high for display;
+OpenD4RT receives its configured 256×256 input. No ground-truth geometry, camera
+parameters, or tracking annotations are passed to the model.
 
-To use another upstream example:
+## Regenerate the saved presentation
 
 ```bash
-python scripts/setup_demo.py --example softball_25
+python scripts/render_demo.py --simple
 ```
 
-Then edit `VIDEO_PATH` and select source pixels in its first frame. Ordinary MP4 paths
-also work with `load_video()`. If Google Drive temporarily blocks automated downloads,
-download the NPZ from the [WorldTrack folder](https://drive.google.com/drive/folders/1-JW88ru30irMYyFab_4YBQbGbd9tKpXV)
-and place it under `data/worldtrack/pstudio_mini/`.
+This updates `D4RT_simple.ipynb` and creates `artifacts/D4RT_simple.html` plus
+`artifacts/simple_point_track.html`. Both HTML outputs embed their image assets
+and work offline. They display saved real predictions without running the model.
 
-## Save the presentation before the talk
+To rebuild the notebook's source cells from its authoring script:
 
 ```bash
-python scripts/render_demo.py
+python scripts/build_notebook.py --simple
 ```
 
-This executes the real GPU notebook and writes:
+This resets that notebook's cells and saved outputs; save any edits first.
 
-- `artifacts/D4RT_demo_executed.ipynb`: saved real model outputs.
-- `artifacts/D4RT_demo.html`: a portable HTML walkthrough.
-- `artifacts/opend4rt_4d_scene.html`: a self-contained 3D player with a time slider.
-- `artifacts/opend4rt_results.npz`: the shown predictions, frames and provenance.
+## Query conventions
 
-The HTML player embeds Plotly's JavaScript, so rotation, playback and time scrubbing
-work without a server, internet connection, or running model. The optional live query
-explorer needs the notebook kernel. Trust the notebook to display its embedded HTML.
+`u, v` are normalized coordinates from 0 to 1 in the source image. `t_src` identifies
+the frame containing that source pixel. `t_tgt` chooses when to predict its position.
+`t_cam` chooses the camera coordinate system for the 3D answer. For image overlays,
+the notebook uses `t_cam=t_tgt`. All time indices must lie within the supplied clip.
 
-CPU rehearsal:
+Results include `xyz`, `uv`, `visibility`, and `confidence_raw`. `depth` is camera Z.
+Geometry is in model units, not calibrated meters. Visibility is a model score;
+fast motion and occlusion can produce tracking errors.
 
-```bash
-python scripts/render_demo.py --illustration
-```
-
-During the talk: show the two-line API, depth, tracks, camera-time comparison, then
-rotate the 4D player and scrub time. The notebook includes short speaker cues. Use
-the saved real player if you want predictable pacing; keep the live point explorer
-for questions. To re-run GPU queries, retain the `d` object and its cached encoder
-memory. Each new call to `d4rt(video)` encodes again.
-
-## API conventions
-
-`u,v` are normalized `[0,1]` coordinates. `t_src,t_tgt,t_cam` are integer frame indices
-in `[0,T-1]`; out-of-range values are rejected rather than silently clamped.
-Arguments follow NumPy broadcasting:
-
-```python
-# One point, all times, in frame-0 camera coordinates.
-track = d.query(.62, .65, 0, np.arange(len(video)), 0)
-
-# N points × T times.
-tracks = d.query(uv[:, 0, None], uv[:, 1, None], 0, times, 0)
-
-# A depth grid, camera Z from matched source/target/camera times.
-U, V = pixel_grid(64, 40)
-depth = d.query(U, V, 0, 0, 0).depth
-```
-
-Results contain `xyz`, `uv`, `visibility`, and `confidence_raw` NumPy arrays.
-Visibility is sigmoid-transformed; confidence is deliberately left raw. For 2D
-overlays use `t_cam=t_tgt`, matching upstream inference. Geometry is expressed in
-the requested camera frame and the model's learned units; frame 0 is not an externally
-calibrated world frame. The wrapper makes no metric-scale, consistency, quality or
-causal forecasting guarantee. A first-frame grid only represents surfaces sampled
-in that frame. Re-querying never falls back to synthetic output on failure.
-
-## Verification and provenance
+## Verification and attribution
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-Tests check broadcasting, input validation, visibility, camera coordinates, occlusion,
-strict checkpoint loading, and encoder caching / chunk independence using a small
-instance of the upstream architecture. Random test weights are never used in the demo.
-Run `scripts/render_demo.py` to verify the complete released-checkpoint path.
+Tests cover input validation, broadcasting, frame sampling, resizing, camera
+coordinates, visibility, strict checkpoint loading, and reuse of encoded video.
+The full presentation is also executed on the released checkpoint and its offline
+player checked in Chrome.
 
-Pinned source: `403290a6e7ea6262a1f20f8c02d5461cd7b6c9b3`.
-Pinned checkpoint revision: `7099b1fc760475de3b7409acd6b63f801b015d07`.
-The source, large weights, example data, and generated NumPy archives are ignored by Git.
+- [Original D4RT paper and project](https://d4rt-paper.github.io/).
+- [OpenD4RT](https://github.com/Lijiaxin0111/Open-d4rt): unofficial implementation, Apache 2.0;
+  pinned source `403290a6e7ea6262a1f20f8c02d5461cd7b6c9b3`.
+- [Released checkpoint](https://huggingface.co/Lijiaxin0111/OpenD4RT): revision
+  `7099b1fc760475de3b7409acd6b63f801b015d07`.
+- DAVIS `kid-football` from [Lightricks' public mirror](https://huggingface.co/datasets/Lightricks/Canny-Control-Dataset),
+  revision `2b7f1b86150dac8b519ad8cf6d5d4a0351c6dc03`. The video retains its original terms.
 
-- [D4RT paper and official project](https://d4rt-paper.github.io/).
-- [OpenD4RT](https://github.com/Lijiaxin0111/Open-d4rt), an unofficial implementation,
-  with its own released checkpoints and results; upstream code uses Apache 2.0.
-- [Released weights and matching config](https://huggingface.co/Lijiaxin0111/OpenD4RT).
-- Example data comes from the WorldTrack link in OpenD4RT's README and retains its
-  original terms. The original D4RT authors do not provide or endorse this local wrapper.
+The earlier extended notebooks (`D4RT_demo.ipynb`, `D4RT_soccer.ipynb`) and the
+explicitly labeled CPU illustration (`D4RT_rehearsal.ipynb`) are still available.

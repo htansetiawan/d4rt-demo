@@ -362,11 +362,131 @@ def make_notebook(illustration=False, soccer=False):
     return nb
 
 
+def make_simple_notebook():
+    """Four presentation steps, one point, and no hidden query setup."""
+    cells = []
+
+    def md(source):
+        cells.append(nbf.v4.new_markdown_cell(textwrap.dedent(source).strip()))
+
+    def code(source):
+        cells.append(nbf.v4.new_code_cell(textwrap.dedent(source).strip()))
+
+    md("""
+    # D4RT · Encode once, query points
+
+    A soccer video, one selected point, and one interface:
+
+    ```python
+    d = d4rt(video)
+    p = d.query(u, v, t_src, t_tgt, t_cam)
+    ```
+
+    We will query one point, make a depth map, then track that same point over time.
+    """)
+    md("""
+    ## 1 · Initialize and encode
+
+    Load the trained model and the soccer clip. We use **32 frames, numbered 0–31**.
+    """)
+    code("""
+    import numpy as np
+    from d4rt_demo import D4RT, load_video, pixel_grid
+    from d4rt_demo import visuals as viz
+
+    viz.style()
+    d4rt = D4RT.from_pretrained(precision="float32")
+    video = load_video("data/davis/kid-football.mp4", stride=2, max_height=480)
+    """)
+    md("""
+    **Encode the video once.** The queries below reuse this encoded video.
+    """)
+    code("""
+    d = d4rt(video)
+    viz.video_player(video)
+    """)
+    md("""
+    ## 2 · Pick a point in frame 0
+
+    Choose a pixel on the ball: **`u = 0.29`, `v = 0.18`**.
+    Coordinates run from 0 to 1: `u` goes left to right; `v` goes top to bottom.
+
+    Ask: **“Where is this point in frame 31?”**
+
+    | Argument | Value | Meaning |
+    |:--|:--|:--|
+    | `u, v` | `0.29, 0.18` | Select the ball pixel in the source frame |
+    | `t_src` | `0` | Identify the point in frame 0 |
+    | `t_tgt` | `31` | Predict its position in frame 31 |
+    | `t_cam` | `31` | Express the answer in frame 31's camera coordinates |
+
+    The yellow marker shows the selected point; the teal marker shows the predicted position.
+    """)
+    code("""
+    u, v = 0.29, 0.18
+
+    p = d.query(u, v, t_src=0, t_tgt=31, t_cam=31)
+
+    print("3D position (X, Y, Z):", np.round(p.xyz, 3))
+    print("Visibility:", round(float(p.visibility), 2))
+    viz.point_view(video, (u, v), p, source=0, target=31)
+    """)
+    md("""
+    ## 3 · A depth map is a grid of point queries
+
+    Ask about **many pixels in frame 0**, at time 0, in camera 0.
+    The **Z coordinate** of each 3D answer gives its depth.
+    Here we sample a 64 × 40 grid, or **2,560 pixels**.
+    """)
+    code("""
+    U, V = pixel_grid(cols=64, rows=40, margin=0)
+    surface = d.query(U, V, t_src=0, t_tgt=0, t_cam=0)
+    depth = surface.depth  # Z coordinate at each grid pixel
+
+    viz.depth_view(video, surface)
+    """)
+    md("""
+    ## 4 · Track the same point over time
+
+    Keep the **same `(u, v)` from frame 0**. Ask for every target frame instead of just frame 31.
+    We use each target frame's camera so its predicted pixel can be drawn on that image.
+
+    This returns **32 positions for one point**. Press Play or scrub the slider to follow it.
+    The visibility score can drop when tracking becomes difficult or the point is occluded.
+    """)
+    code("""
+    times = np.arange(len(video))  # 0, 1, ..., 31
+    track = d.query(u, v, t_src=0, t_tgt=times, t_cam=times)
+
+    print("32 positions × 3 coordinates:", track.xyz.shape)
+    viz.point_track_player(video, track)
+    """)
+    md("""
+    *Real predictions from [OpenD4RT](https://github.com/Lijiaxin0111/Open-d4rt),
+    an unofficial implementation of [D4RT](https://d4rt-paper.github.io/).
+    Video: DAVIS `kid-football`, from [Lightricks' public mirror](https://huggingface.co/datasets/Lightricks/Canny-Control-Dataset).
+    Geometry is in model units; visibility is a model score.*
+    """)
+    nb = nbf.v4.new_notebook(cells=cells)
+    nb.metadata.update(kernelspec={"display_name":"D4RT demo", "language":"python", "name":"d4rt-demo"},
+                       language_info={"name":"python", "version":"3.13"})
+    for c in cells:
+        c.metadata["slideshow"] = {"slide_type":"slide" if c.cell_type == "markdown" and c.source.startswith("## ") else "fragment"}
+    return nb
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--soccer", action="store_true", help="Create only the separate soccer edition.")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--soccer", action="store_true", help="Create only the separate soccer edition.")
+    mode.add_argument("--simple", action="store_true", help="Create only the four-step presentation notebook.")
     args = parser.parse_args()
+    if args.simple:
+        path = ROOT / "D4RT_simple.ipynb"
+        nbf.write(make_simple_notebook(), path)
+        print(path)
+        raise SystemExit(0)
     targets = [("D4RT_soccer.ipynb",False)] if args.soccer else [("D4RT_demo.ipynb",False),("D4RT_rehearsal.ipynb",True)]
     for name, illustration in targets:
         path = ROOT / name

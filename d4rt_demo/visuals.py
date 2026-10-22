@@ -35,6 +35,43 @@ def _finish(fig, label):
     plt.show()
 
 
+def _point_marker(ax, point, label, color, w, h, marker_size=900, label_y=.08):
+    point = np.asarray(point)
+    if point.shape != (2,):
+        raise ValueError("Pass a single point with uv shape (2,), not a batch.")
+    if not np.isfinite(point).all() or not ((point >= 0) & (point <= 1)).all():
+        status = "OUTSIDE FRAME" if np.isfinite(point).all() else "UNAVAILABLE"
+        ax.text(.05, label_y, f"{label}\n{status}", transform=ax.transAxes,
+                color=color, fontsize=10, fontweight="bold",
+                bbox=dict(facecolor="black", edgecolor=color, alpha=.9), zorder=8)
+        return
+    x, y = point * [w-1, h-1]
+    ax.scatter(x, y, s=marker_size, facecolors="none", edgecolors="black", linewidths=7, zorder=5)
+    ax.scatter(x, y, s=marker_size, facecolors="none", edgecolors=color, linewidths=3, zorder=6)
+    ax.scatter(x, y, s=40, facecolors="white", edgecolors="black", linewidths=1, zorder=7)
+    ax.annotate(label, xy=(x, y), xytext=(.05, label_y),
+                textcoords="axes fraction", color=color, fontsize=10, fontweight="bold",
+                bbox=dict(boxstyle="round,pad=.35", facecolor="black", edgecolor=color, alpha=.9),
+                arrowprops=dict(arrowstyle="->", color=color, lw=2), zorder=8)
+
+
+def point_view(video, uv, prediction, *, source=0, target=None):
+    """Show one selected source pixel beside its predicted target pixel."""
+    target = len(video)-1 if target is None else target
+    h, w = video.frames.shape[1:3]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.4))
+    for ax, t in zip(axes, (source, target)):
+        ax.imshow(video.frames[t]); ax.axis("off")
+    axes[0].set_title(f"Frame {source} · choose this point")
+    axes[1].set_title(f"Frame {target} · predicted position")
+    _point_marker(axes[0], uv, "SOURCE POINT", "#ffe600", w, h)
+    _point_marker(axes[1], prediction.uv,
+                  f"PREDICTED · visibility {float(prediction.visibility):.2f}", TEAL, w, h)
+    for ax in axes:
+        ax.set_xlim(-.5, w-.5); ax.set_ylim(h-.5, -.5)
+    _finish(fig, video.name)
+
+
 def filmstrip(video, uv=None, source=0, *, marker_size=900, prediction=None, target=None):
     """Mark the source and, optionally, one predicted target-frame position.
 
@@ -57,23 +94,7 @@ def filmstrip(video, uv=None, source=0, *, marker_size=900, prediction=None, tar
     h, w = video.frames.shape[1:3]
 
     def marker(ax, point, label, color, label_y=.08):
-        point = np.asarray(point)
-        if point.shape != (2,):
-            raise ValueError("Pass a single point with uv shape (2,), not a batch.")
-        if not np.isfinite(point).all() or not ((point >= 0) & (point <= 1)).all():
-            status = "OUTSIDE FRAME" if np.isfinite(point).all() else "UNAVAILABLE"
-            ax.text(.05, label_y, f"{label}\n{status}", transform=ax.transAxes,
-                    color=color, fontsize=10, fontweight="bold",
-                    bbox=dict(facecolor="black", edgecolor=color, alpha=.9), zorder=8)
-            return
-        x, y = point * [w-1, h-1]
-        ax.scatter(x, y, s=marker_size, facecolors="none", edgecolors="black", linewidths=7, zorder=5)
-        ax.scatter(x, y, s=marker_size, facecolors="none", edgecolors=color, linewidths=3, zorder=6)
-        ax.scatter(x, y, s=40, facecolors="white", edgecolors="black", linewidths=1, zorder=7)
-        ax.annotate(label, xy=(x, y), xytext=(.05, label_y),
-                    textcoords="axes fraction", color=color, fontsize=10, fontweight="bold",
-                    bbox=dict(boxstyle="round,pad=.35", facecolor="black", edgecolor=color, alpha=.9),
-                    arrowprops=dict(arrowstyle="->", color=color, lw=2), zorder=8)
+        _point_marker(ax, point, label, color, w, h, marker_size, label_y)
 
     for ax, t in zip(axes, ids):
         ax.imshow(video.frames[t]); ax.set_title(f"frame {t}"); ax.axis("off")
@@ -204,6 +225,70 @@ def video_player(video):
     uri = base64.b64encode(buf.getvalue()).decode()
     display(HTML(f'<img alt="{html.escape(video.name)}" src="data:image/gif;base64,{uri}" '
                  'style="width:640px;max-width:100%;border-radius:12px"/>'))
+
+
+def point_track_player(video, track, path="artifacts/simple_point_track.html"):
+    """A one-point video player with a trail, play/pause, and frame slider."""
+    import json
+    from PIL import Image
+    from IPython.display import display
+
+    if track.uv.shape != (len(video), 2) or track.visibility.shape != (len(video),):
+        raise ValueError("Query one point at all video times before calling point_track_player().")
+    frames = []
+    for frame in video.frames:
+        im = Image.fromarray(frame)
+        im.thumbnail((640, 480))
+        buf = io.BytesIO(); im.save(buf, format="JPEG", quality=88)
+        frames.append("data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode())
+    payload = dict(frames=frames, width=im.width, height=im.height, fps=video.fps,
+                   uv=[p.tolist() if np.isfinite(p).all() else None for p in track.uv],
+                   visibility=[float(v) if np.isfinite(v) else None for v in track.visibility])
+    content = '''<!doctype html><html><head><meta charset="utf-8"><style>
+      * {box-sizing:border-box} body {margin:0;padding:16px;background:#0c1424;color:#e8efff;font:15px system-ui}
+      .wrap {max-width:820px;margin:auto} canvas {width:100%;display:block;border-radius:10px;background:#111d32}
+      .controls {display:flex;gap:14px;align-items:center;margin-top:14px}
+      button {background:#24d6be;color:#0c1424;border:0;border-radius:6px;padding:8px 18px;font-weight:700;cursor:pointer}
+      input {flex:1;min-width:80px;accent-color:#24d6be} #status {margin:12px 0;font-variant-numeric:tabular-nums}
+      .hint {color:#a8b8d0;font-size:13px}
+    </style></head><body><div class="wrap"><canvas id="video"></canvas>
+    <div class="controls"><button id="play">Play</button><input id="frame" type="range" min="0" value="0" aria-label="Target frame"></div>
+    <div id="status"></div><div class="hint">One source point from frame 0. The ring follows its predicted position; the line shows its path.</div>
+    </div><script>
+    const data=__DATA__, canvas=document.getElementById('video'), ctx=canvas.getContext('2d');
+    const slider=document.getElementById('frame'), play=document.getElementById('play'), status=document.getElementById('status');
+    canvas.width=data.width;canvas.height=data.height;slider.max=data.frames.length-1;
+    let t=0,timer=null;
+    const images=data.frames.map(src=>{const im=new Image();im.src=src;im.onload=()=>draw();return im});
+    function draw() {
+      if (!images[t].complete || !images[t].naturalWidth) return;
+      ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(images[t],0,0,canvas.width,canvas.height);
+      ctx.lineWidth=3;
+      for(let i=1;i<=t;i++) {
+        const a=data.uv[i-1],b=data.uv[i];if(!a||!b)continue;
+        ctx.strokeStyle='#ffe600';ctx.setLineDash(data.visibility[i]>.5?[]:[5,5]);
+        ctx.beginPath();ctx.moveTo(a[0]*(canvas.width-1),a[1]*(canvas.height-1));ctx.lineTo(b[0]*(canvas.width-1),b[1]*(canvas.height-1));ctx.stroke();
+      }
+      ctx.setLineDash([]);const p=data.uv[t],v=data.visibility[t];
+      const inside=p&&p[0]>=0&&p[0]<=1&&p[1]>=0&&p[1]<=1;
+      if(inside) {
+        const x=p[0]*(canvas.width-1),y=p[1]*(canvas.height-1);
+        for(const [color,width] of [['#000',9],['#24d6be',4]]) {
+          ctx.strokeStyle=color;ctx.lineWidth=width;ctx.beginPath();ctx.arc(x,y,16,0,2*Math.PI);ctx.stroke();
+        }
+        ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(x,y,3,0,2*Math.PI);ctx.fill();
+      }
+      status.textContent=`Frame ${t} / ${data.frames.length-1} · visibility ${v===null?'unavailable':v.toFixed(2)}`+
+        (!inside?' · predicted point outside frame':v<=.5?' · low visibility':'');
+      slider.value=t;
+    }
+    function pause(){clearInterval(timer);timer=null;play.textContent='Play'}
+    play.onclick=()=>{if(timer){pause();return}play.textContent='Pause';timer=setInterval(()=>{t=(t+1)%images.length;draw()},1000/data.fps)};
+    slider.oninput=()=>{pause();t=Number(slider.value);draw()};draw();
+    </script></body></html>'''.replace("__DATA__", json.dumps(payload))
+    path = Path(path); path.parent.mkdir(parents=True, exist_ok=True); path.write_text(content)
+    display({"text/html": '<iframe title="One point tracked through time" style="width:100%;height:620px;border:0;border-radius:12px" '
+             'srcdoc="' + html.escape(content, quote=True) + '"></iframe>'}, raw=True)
 
 
 def query_explorer(scene, u=.35, v=.5):

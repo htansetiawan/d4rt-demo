@@ -60,13 +60,13 @@ def setup(source=True, weights=False, example=None):
         for name in ("model.yaml", "opend4rt.ckpt"):
             path = hf_hub_download(HF_REPO, f"{WEIGHT_DIR}/{name}", revision=HF_REVISION, local_dir=ROOT)
             print(path)
-    print("Ready. Open D4RT_demo.ipynb using this Python environment.")
+    print("Ready. Open D4RT_simple.ipynb using this Python environment.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weights", action="store_true", help="Download the released ~14 GB checkpoint.")
-    parser.add_argument("--example", nargs="?", const="juggle_5", choices=EXAMPLES)
+    parser.add_argument("--example", nargs="?", const="soccer", choices=EXAMPLES)
     parser.add_argument("--no-source", action="store_true")
     args = parser.parse_args()
     setup(source=not args.no_source, weights=args.weights, example=args.example)

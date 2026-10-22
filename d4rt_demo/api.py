@@ -158,11 +158,17 @@ class D4RT:
         return cls(backend="illustration")
 
     @classmethod
-    def from_pretrained(cls, *, repo_dir, checkpoint, config, device="cuda",
+    def from_pretrained(cls, *, repo_dir=None, checkpoint=None, config=None, device="cuda",
                         precision="auto", chunk_size=64):
+        """Load the released 32-frame model from this project's setup paths."""
         import torch
         import yaml
 
+        root = Path(__file__).resolve().parents[1]
+        repo_dir = Path(repo_dir) if repo_dir is not None else root / ".cache/Open-d4rt"
+        weight_dir = root / "checkpoints/OpenD4RT_32CLIP_9Dataset_NoAUG"
+        checkpoint = Path(checkpoint) if checkpoint is not None else weight_dir / "opend4rt.ckpt"
+        config = Path(config) if config is not None else weight_dir / "model.yaml"
         if device.startswith("cuda") and not torch.cuda.is_available():
             raise RuntimeError("CUDA is unavailable. Select the GPU notebook kernel.")
         if precision == "auto":
