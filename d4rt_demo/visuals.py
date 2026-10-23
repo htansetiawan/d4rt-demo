@@ -160,24 +160,30 @@ def sample_colors(video, u, v, t_src=0):
     return video.frames[t_src, np.rint(v*(h-1)).astype(int), np.rint(u*(w-1)).astype(int)]
 
 
-def scene_player(result, colors, times, path="artifacts/4d_scene.html"):
+def scene_player(result, colors, times, path="artifacts/4d_scene.html", *, title=None, frame_label="Target frame "):
     """Precomputed 3D time slider; rotating it requires neither Python nor GPU."""
     import plotly.graph_objects as go
     from IPython.display import HTML, display
 
     xyz = result.xyz  # [points,times,3]
-    colors = np.asarray(colors).reshape(-1, 3)
-    css_colors = [f"rgb({int(c[0])},{int(c[1])},{int(c[2])})" for c in colors]
+    colors = np.asarray(colors)
+    per_frame_colors = colors.shape == xyz.shape
+    if not per_frame_colors:
+        colors = colors.reshape(-1, 3)
+        if colors.shape != (xyz.shape[0], 3):
+            raise ValueError("Provide one RGB color per point, or per point and frame.")
 
     def traces(i):
         p = xyz[:, i]
+        rgb = colors[:, i] if per_frame_colors else colors
+        css_colors = np.asarray([f"rgb({int(c[0])},{int(c[1])},{int(c[2])})" for c in rgb])
         finite = np.isfinite(p).all(-1) & (p[:, 2] > 0)
         visible = (result.visibility[:, i] > .5) & finite
         hidden = (~(result.visibility[:, i] > .5)) & finite
         out = []
         for mask, opacity, name in ((visible, .95, "Visible > 0.5"), (hidden, .15, "Occluded / low visibility")):
             out.append(go.Scatter3d(x=p[mask, 0], y=p[mask, 1], z=p[mask, 2], mode="markers", name=name,
-                                   marker=dict(size=3, color=np.asarray(css_colors)[mask].tolist(), opacity=opacity),
+                                   marker=dict(size=3, color=css_colors[mask].tolist(), opacity=opacity),
                                    hovertemplate="X %{x:.3f}<br>Y %{y:.3f}<br>Z %{z:.3f}<extra></extra>"))
         return out
 
@@ -192,24 +198,59 @@ def scene_player(result, colors, times, path="artifacts/4d_scene.html"):
             ranges[axis+"axis"] = dict(title=axis.upper(), range=[center-span*.55, center+span*.55],
                                        gridcolor="#30415a", backgroundcolor="#111d32")
     fig.update_layout(template="plotly_dark", paper_bgcolor="#0c1424", plot_bgcolor="#0c1424",
-                      title=f"{result.backend.upper()} · a sampled surface through time · fixed camera 0",
+                      title=title or f"{result.backend.upper()} · a sampled surface through time · fixed camera 0",
                       height=620, margin=dict(l=0, r=0, t=60, b=90),
                       scene=dict(aspectmode="cube", uirevision="keep-view",
                                  camera=dict(up=dict(x=0,y=-1,z=0), eye=dict(x=1.5,y=-.5,z=-1.8)), **ranges),
                       updatemenus=[dict(type="buttons", direction="left", showactive=False, x=.02, y=.02,
                                         bgcolor="#24334c", bordercolor="#60748f", font=dict(color="#e8efff"), buttons=[
-                          dict(label="▶ Play", method="animate", args=[None, {"frame":{"duration":160,"redraw":True}, "transition":{"duration":0}, "fromcurrent":True}]),
-                          dict(label="Pause", method="animate", args=[[None], {"mode":"immediate", "frame":{"duration":0,"redraw":False}}])])],
-                      sliders=[dict(x=.25, len=.72, y=.02, currentvalue=dict(prefix="Target frame "),
-                                    steps=[dict(label=str(int(t)), method="animate", args=[[str(int(t))],
+                          dict(label="▶ Play", method="animate", execute=False, args=[None, {"frame":{"duration":160,"redraw":True}, "transition":{"duration":0}, "fromcurrent":True}]),
+                          dict(label="Pause", method="animate", execute=False, args=[[None], {"mode":"immediate", "frame":{"duration":0,"redraw":False}}])])],
+                      sliders=[dict(x=.25, len=.72, y=.02, currentvalue=dict(prefix=frame_label),
+                                    steps=[dict(label=str(int(t)), method="animate", execute=False, args=[[str(int(t))],
                                          {"mode":"immediate", "frame":{"duration":0,"redraw":True}, "transition":{"duration":0}}]) for t in times])])
     path = Path(path); path.parent.mkdir(parents=True, exist_ok=True)
+    # Plotly rejects an interrupted animation with undefined. Handle that normal
+    # cancellation explicitly when pausing or scrubbing, while surfacing errors.
+    controls = """
+    const plot = document.getElementById('{plot_id}');
+    function animateSafely(args) {
+        Plotly.animate(plot, args[0], args[1]).catch(reason => {
+            if (reason !== undefined) throw reason;
+        });
+    }
+    plot.on('plotly_buttonclicked', event => animateSafely(event.button.args));
+    plot.on('plotly_sliderchange', event => {
+        if (event.interaction) animateSafely(event.step.args);
+    });
+    """
     content = fig.to_html(include_plotlyjs=True, full_html=True, auto_play=False,
-                          config={"displaylogo":False, "responsive":True})
+                          config={"displaylogo":False, "responsive":True}, post_script=controls)
     path.write_text(content)
     display({"text/html": '<iframe title="Interactive 4D scene" style="width:100%;height:660px;border:0;border-radius:12px" '
              'srcdoc="' + html.escape(content, quote=True) + '"></iframe>'}, raw=True)
     return path
+
+
+def point_cloud_player(clouds, colors, path="artifacts/simple_point_clouds.html"):
+    """Show each frame's reconstructed pixels and RGB in camera 0 coordinates."""
+    from types import SimpleNamespace
+
+    if not clouds or len(clouds) != len(colors):
+        raise ValueError("Provide a point cloud and matching RGB colors for every frame.")
+    if len({c.backend for c in clouds}) != 1:
+        raise ValueError("All frames must use the same backend.")
+    result = SimpleNamespace(
+        xyz=np.stack([c.xyz.reshape(-1, 3) for c in clouds], axis=1),
+        visibility=np.stack([c.visibility.reshape(-1) for c in clouds], axis=1),
+        backend=clouds[0].backend,
+    )
+    rgb = np.stack([np.asarray(c).reshape(-1, 3) for c in colors], axis=1)
+    if rgb.shape != result.xyz.shape:
+        raise ValueError("Each predicted point needs a matching RGB color.")
+    return scene_player(result, rgb, np.arange(len(clouds)), path=path,
+                        title=f"{result.backend.upper()} · point clouds · all {len(clouds)} frames · camera 0 reference",
+                        frame_label="Frame ")
 
 
 def video_player(video):

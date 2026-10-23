@@ -363,7 +363,7 @@ def make_notebook(illustration=False, soccer=False):
 
 
 def make_simple_notebook():
-    """Four presentation steps, one point, and no hidden query setup."""
+    """Simple presentation steps with explicit queries and no hidden setup."""
     cells = []
 
     def md(source):
@@ -382,7 +382,8 @@ def make_simple_notebook():
     p = d.query(u, v, t_src, t_tgt, t_cam)
     ```
 
-    We will query one point, make a depth map, then track that same point over time.
+    We will query one point, make a depth map, track that same point over time,
+    then reconstruct a point cloud for every frame.
     """)
     md("""
     ## 1 · Initialize and encode
@@ -462,6 +463,26 @@ def make_simple_notebook():
     viz.point_track_player(video, track)
     """)
     md("""
+    ## 5 · Point clouds for all frames
+
+    Ask about a grid of pixels in **each frame**, at that same time.
+    Keep `t_cam=0` so all the clouds use the same 3D coordinate system.
+
+    Each cloud has **2,560 sampled points**, colored from its own RGB frame.
+    Press Play or scrub frames **0–31**. Drag to rotate the cloud.
+    These are the surfaces visible in each frame, not a complete model of hidden surfaces.
+    """)
+    code("""
+    U, V = pixel_grid(cols=64, rows=40, margin=0)
+    clouds, colors = [], []
+
+    for t in range(len(video)):
+        clouds.append(d.query(U, V, t_src=t, t_tgt=t, t_cam=0))
+        colors.append(viz.sample_colors(video, U, V, t_src=t))
+
+    viz.point_cloud_player(clouds, colors)
+    """)
+    md("""
     *Real predictions from [OpenD4RT](https://github.com/Lijiaxin0111/Open-d4rt),
     an unofficial implementation of [D4RT](https://d4rt-paper.github.io/).
     Video: DAVIS `kid-football`, from [Lightricks' public mirror](https://huggingface.co/datasets/Lightricks/Canny-Control-Dataset).
@@ -480,7 +501,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--soccer", action="store_true", help="Create only the separate soccer edition.")
-    mode.add_argument("--simple", action="store_true", help="Create only the four-step presentation notebook.")
+    mode.add_argument("--simple", action="store_true", help="Create only the simple presentation notebook.")
     args = parser.parse_args()
     if args.simple:
         path = ROOT / "D4RT_simple.ipynb"

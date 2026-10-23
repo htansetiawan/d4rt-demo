@@ -1,16 +1,19 @@
 # D4RT demo
 
 Open **[D4RT_simple.ipynb](D4RT_simple.ipynb)** for the presentation. It uses real
-OpenD4RT predictions on the DAVIS `kid-football` soccer clip and has four steps:
+OpenD4RT predictions on the DAVIS `kid-football` soccer clip and has five steps:
 
 1. Initialize the model and encode the video: `d = d4rt(video)`.
 2. Select one `(u, v)` pixel on the ball in frame 0 and query its position in frame 31.
 3. Query a grid of pixels to make a depth map.
 4. Track that same ball point through all 32 frames.
+5. Reconstruct a colored point cloud for every frame in a shared camera-0 reference.
 
 Every query variable is visible in the notebook. The point example shows frame 0
 and frame 31 side by side with large markers. The final player has Play/Pause,
 a frame slider, a predicted point marker, and its path.
+The point-cloud player adds rotation and a slider covering all 32 frames, with
+2,560 newly sampled pixels and their RGB colors in each frame.
 
 ```python
 d4rt = D4RT.from_pretrained(precision="float32")
@@ -26,7 +29,8 @@ p = d.query(u, v, t_src=0, t_tgt=31, t_cam=31)
 
 Select the **D4RT demo** kernel, then Run All Cells. The notebook also contains
 saved outputs. Download and open `artifacts/D4RT_simple.html` for the offline
-walkthrough, or `artifacts/simple_point_track.html` for the one-point player.
+walkthrough, `artifacts/simple_point_track.html` for the one-point player, or
+`artifacts/simple_point_clouds.html` for the point clouds.
 
 The Mac browser can connect to the GPU machine's Jupyter server over an SSH tunnel;
 the Python kernel and model remain on the GPU machine.
@@ -65,7 +69,7 @@ python scripts/render_demo.py --simple
 ```
 
 This updates `D4RT_simple.ipynb` and creates `artifacts/D4RT_simple.html` plus
-`artifacts/simple_point_track.html`. Both HTML outputs embed their image assets
+`artifacts/simple_point_track.html` and `artifacts/simple_point_clouds.html`. All HTML outputs embed their assets
 and work offline. They display saved real predictions without running the model.
 
 To rebuild the notebook's source cells from its authoring script:
